@@ -12,17 +12,18 @@ Local PDF Studio is a Flutter app for quick PDF and image utilities across web a
 
 - Images to PDF
 	- Select one or many images.
-	- Reorder pages before export.
+	- Reorder pages and remove unwanted images before export.
 	- Choose A4 output or match image size.
 - Camera to PDF (mobile only)
-	- Capture a single photo or multiple photos.
-	- Combine captures into one PDF.
+	- Open camera directly and capture multiple photos.
+	- After capture, review thumbnails, remove/reorder, then create one PDF.
+	- Choose A4 output or match image size.
 - PDF to Images
-	- Export each PDF page as PNG.
+	- Export each PDF page as JPG.
+	- On mobile, exported JPGs are also attempted to be saved into the gallery.
 - PDF to Text
-	- Extract plain text from a PDF.
-- PDF to Word
-	- Export extracted text into a basic `.doc` file.
+	- Extract text and show it directly in an in-app popup dialog.
+	- Popup includes copy-to-clipboard and close controls.
 - Crop Photo
 	- Manual crop tool before saving.
 
@@ -32,6 +33,12 @@ This app is local-only for its conversion flows. Your selected files are process
 
 Important note:
 Standard platform permissions are required for camera-based features.
+
+## Save behavior by platform
+
+- Android: files are saved directly to Downloads.
+- iOS: files are saved directly to app Documents (visible in Files app for this app).
+- Web/Desktop: files are saved with the platform file-saving flow.
 
 ## Supported platforms
 
@@ -53,13 +60,16 @@ Note: Camera capture is available on Android and iOS.
 - `image` for image decoding
 - `crop_your_image` for manual crop
 - `image_picker` for camera capture on mobile
+- `path_provider` for direct device storage paths
+- `image_gallery_saver` for gallery saves on mobile image exports
 
 ## Usage quick guide
 
 1. Open the app and select a tool card.
 2. Pick input files (or capture from camera on mobile).
 3. Wait for processing to finish (loading overlay appears while working).
-4. Save exported output when prompted.
+4. For PDF to Text, read/copy text from the popup dialog.
+5. For file exports, check your platform-specific save location.
 
 ## Project structure
 
