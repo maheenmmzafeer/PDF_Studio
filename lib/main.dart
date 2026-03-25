@@ -6,7 +6,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image/image.dart' as img;
-import 'package:image_gallery_saver/image_gallery_saver.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart' as pdf;
@@ -46,6 +45,9 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isWorking = false;
   String _status = 'Ready';
   final ImagePicker _imagePicker = ImagePicker();
+  static const MethodChannel _mediaScanChannel = MethodChannel(
+    'pdf_studio/media_scan',
+  );
 
   bool get _isMobilePlatform {
     if (kIsWeb) {
@@ -126,9 +128,23 @@ class _HomeScreenState extends State<HomeScreen> {
     final file = File('${downloadsDir.path}/$name');
     try {
       await file.writeAsBytes(bytes, flush: true);
+      await _scanFileInAndroidGallery(file.path);
       return file.path;
     } catch (_) {
       return null;
+    }
+  }
+
+  Future<void> _scanFileInAndroidGallery(String path) async {
+    if (kIsWeb || !Platform.isAndroid) {
+      return;
+    }
+    try {
+      await _mediaScanChannel.invokeMethod('scanFile', <String, String>{
+        'path': path,
+      });
+    } catch (_) {
+      // Keep save flow successful even if indexing fails.
     }
   }
 
@@ -234,33 +250,6 @@ class _HomeScreenState extends State<HomeScreen> {
       return pngBytes;
     }
     return Uint8List.fromList(img.encodeJpg(decoded, quality: 94));
-  }
-
-  Future<bool> _saveImageToGallery(Uint8List imageBytes, String name) async {
-    if (!_isMobilePlatform) {
-      return false;
-    }
-
-    try {
-      final result = await ImageGallerySaver.saveImage(
-        imageBytes,
-        quality: 94,
-        name: name,
-      );
-      if (result is Map) {
-        final success = result['isSuccess'];
-        if (success is bool) {
-          return success;
-        }
-        final status = result['status'];
-        if (status is bool) {
-          return status;
-        }
-      }
-      return false;
-    } catch (_) {
-      return false;
-    }
   }
 
   Future<List<_PickedImage>> _pickImageFiles() async {
@@ -683,7 +672,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     var pageCounter = 0;
-    var gallerySavedCount = 0;
     await for (final page in Printing.raster(pdfBytes, dpi: 144)) {
       pageCounter += 1;
       final stamp = _timestamp();
@@ -692,24 +680,13 @@ class _HomeScreenState extends State<HomeScreen> {
       final imageName = 'pdf_page_${stamp}_$pageCounter';
 
       await _saveBytes('$imageName.jpg', jpgBytes);
-
-      final savedToGallery = await _saveImageToGallery(jpgBytes, imageName);
-      if (savedToGallery) {
-        gallerySavedCount += 1;
-      }
     }
 
     if (pageCounter == 0) {
       _showMessage('No pages rendered');
       return;
     }
-    if (_isMobilePlatform) {
-      _showMessage(
-        '$pageCounter JPG page image(s) saved. Added $gallerySavedCount to gallery.',
-      );
-    } else {
-      _showMessage('$pageCounter JPG page image(s) saved');
-    }
+    _showMessage('$pageCounter JPG page image(s) saved');
   }
 
   Future<void> _pdfToText() async {

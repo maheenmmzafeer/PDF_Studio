@@ -20,7 +20,7 @@ Local PDF Studio is a Flutter app for quick PDF and image utilities across web a
 	- Choose A4 output or match image size.
 - PDF to Images
 	- Export each PDF page as JPG.
-	- On mobile, exported JPGs are also attempted to be saved into the gallery.
+	- On Android, saved JPGs are indexed so they can appear in Gallery apps.
 - PDF to Text
 	- Extract text and show it directly in an in-app popup dialog.
 	- Popup includes copy-to-clipboard and close controls.
@@ -36,8 +36,8 @@ Standard platform permissions are required for camera-based features.
 
 ## Save behavior by platform
 
-- Android: files are saved directly to Downloads.
-- iOS: files are saved directly to app Documents (visible in Files app for this app).
+- Android: files are saved directly to the Downloads folder. The app also triggers media indexing so image files can appear in Gallery.
+- iOS: files are saved directly to the app Documents folder (available in the Files app under this app). iOS does not use an Android-style Downloads folder path for apps.
 - Web/Desktop: files are saved with the platform file-saving flow.
 
 ## Supported platforms
@@ -61,7 +61,6 @@ Note: Camera capture is available on Android and iOS.
 - `crop_your_image` for manual crop
 - `image_picker` for camera capture on mobile
 - `path_provider` for direct device storage paths
-- `image_gallery_saver` for gallery saves on mobile image exports
 
 ## Usage quick guide
 
