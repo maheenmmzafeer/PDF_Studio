@@ -1,11 +1,14 @@
-import 'dart:convert';
 import 'dart:io';
 import 'package:crop_your_image/crop_your_image.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:file_saver/file_saver.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image/image.dart' as img;
+import 'package:image_gallery_saver/image_gallery_saver.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart' as pdf;
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
@@ -42,12 +45,23 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   bool _isWorking = false;
   String _status = 'Ready';
+  final ImagePicker _imagePicker = ImagePicker();
+
+  bool get _isMobilePlatform {
+    if (kIsWeb) {
+      return false;
+    }
+    return Platform.isAndroid || Platform.isIOS;
+  }
 
   Future<void> _runTask(String title, Future<void> Function() task) async {
     setState(() {
       _isWorking = true;
       _status = 'Working: $title';
     });
+
+    // Let Flutter paint the loading overlay before heavy work begins.
+    await Future<void>.delayed(const Duration(milliseconds: 16));
 
     try {
       await task();
@@ -75,7 +89,77 @@ class _HomeScreenState extends State<HomeScreen> {
     return '${now.year}${two(now.month)}${two(now.day)}_${two(now.hour)}${two(now.minute)}${two(now.second)}';
   }
 
+  Future<Directory?> _resolveAndroidDownloadsDirectory() async {
+    final candidates = <String>[
+      '/storage/emulated/0/Download',
+      '/sdcard/Download',
+    ];
+
+    for (final path in candidates) {
+      final dir = Directory(path);
+      if (await dir.exists()) {
+        return dir;
+      }
+      try {
+        await dir.create(recursive: true);
+        if (await dir.exists()) {
+          return dir;
+        }
+      } catch (_) {
+        // Try next candidate path.
+      }
+    }
+
+    final fallback = await getDownloadsDirectory();
+    return fallback;
+  }
+
+  Future<String?> _saveBytesToAndroidDownloads(
+    String name,
+    Uint8List bytes,
+  ) async {
+    final downloadsDir = await _resolveAndroidDownloadsDirectory();
+    if (downloadsDir == null) {
+      return null;
+    }
+
+    final file = File('${downloadsDir.path}/$name');
+    try {
+      await file.writeAsBytes(bytes, flush: true);
+      return file.path;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<String?> _saveBytesToIosDocuments(String name, Uint8List bytes) async {
+    try {
+      final docsDir = await getApplicationDocumentsDirectory();
+      final file = File('${docsDir.path}/$name');
+      await file.writeAsBytes(bytes, flush: true);
+      return file.path;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<String> _saveBytes(String name, Uint8List bytes) async {
+    if (!kIsWeb && Platform.isAndroid) {
+      final savedPath = await _saveBytesToAndroidDownloads(name, bytes);
+      if (savedPath != null) {
+        return 'Saved to Downloads: $savedPath';
+      }
+      return 'Could not save to Downloads. Please allow storage access and try again.';
+    }
+
+    if (!kIsWeb && Platform.isIOS) {
+      final savedPath = await _saveBytesToIosDocuments(name, bytes);
+      if (savedPath != null) {
+        return 'Saved on device: $savedPath';
+      }
+      return 'Could not save on iOS device storage.';
+    }
+
     final dot = name.lastIndexOf('.');
     final base = dot > 0 ? name.substring(0, dot) : name;
     final ext = dot > 0 ? name.substring(dot + 1) : 'bin';
@@ -86,7 +170,7 @@ class _HomeScreenState extends State<HomeScreen> {
       fileExtension: ext,
       mimeType: MimeType.other,
     );
-    return 'Saved $name';
+    return 'Saved file: $name';
   }
 
   Future<Uint8List?> _readPickedFileBytes(PlatformFile pickedFile) async {
@@ -97,6 +181,86 @@ class _HomeScreenState extends State<HomeScreen> {
       return File(pickedFile.path!).readAsBytes();
     }
     return null;
+  }
+
+  Future<Uint8List?> _buildPdfBytesFromImages(
+    List<_PickedImage> images,
+    _ImagePdfPageMode pageMode,
+  ) async {
+    final doc = pw.Document();
+    var addedPages = 0;
+
+    for (final pickedImage in images) {
+      final processed = await compute(_prepareImageForPdf, pickedImage.bytes);
+      if (processed == null) {
+        continue;
+      }
+
+      final image = pw.MemoryImage(processed.pngBytes);
+      final pageFormat = pageMode == _ImagePdfPageMode.matchImage
+          ? pdf.PdfPageFormat(
+              processed.width.toDouble(),
+              processed.height.toDouble(),
+              marginAll: 0,
+            )
+          : pdf.PdfPageFormat.a4;
+
+      doc.addPage(
+        pw.Page(
+          pageFormat: pageFormat,
+          margin: pageMode == _ImagePdfPageMode.matchImage
+              ? pw.EdgeInsets.zero
+              : const pw.EdgeInsets.all(20),
+          build: (_) => pw.Center(
+            child: pw.FittedBox(fit: pw.BoxFit.contain, child: pw.Image(image)),
+          ),
+        ),
+      );
+      addedPages += 1;
+
+      // Yield occasionally so the progress overlay keeps animating.
+      await Future<void>.delayed(Duration.zero);
+    }
+
+    if (addedPages == 0) {
+      return null;
+    }
+    return doc.save();
+  }
+
+  Uint8List _convertPngToJpg(Uint8List pngBytes) {
+    final decoded = img.decodeImage(pngBytes);
+    if (decoded == null) {
+      return pngBytes;
+    }
+    return Uint8List.fromList(img.encodeJpg(decoded, quality: 94));
+  }
+
+  Future<bool> _saveImageToGallery(Uint8List imageBytes, String name) async {
+    if (!_isMobilePlatform) {
+      return false;
+    }
+
+    try {
+      final result = await ImageGallerySaver.saveImage(
+        imageBytes,
+        quality: 94,
+        name: name,
+      );
+      if (result is Map) {
+        final success = result['isSuccess'];
+        if (success is bool) {
+          return success;
+        }
+        final status = result['status'];
+        if (status is bool) {
+          return status;
+        }
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<List<_PickedImage>> _pickImageFiles() async {
@@ -140,9 +304,71 @@ class _HomeScreenState extends State<HomeScreen> {
     return items;
   }
 
+  Future<bool> _askTakeAnotherPhoto(int capturedCount) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Add another photo?'),
+        content: Text(
+          'Captured $capturedCount photo${capturedCount == 1 ? '' : 's'}.',
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Finish'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Take another'),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
+  }
+
+  Future<List<_PickedImage>> _captureCameraImages() async {
+    if (!_isMobilePlatform) {
+      return <_PickedImage>[];
+    }
+
+    final captured = <_PickedImage>[];
+    final seed = DateTime.now().microsecondsSinceEpoch;
+    var index = 0;
+
+    while (true) {
+      final shot = await _imagePicker.pickImage(source: ImageSource.camera);
+      if (shot == null) {
+        break;
+      }
+
+      final bytes = await shot.readAsBytes();
+      captured.add(
+        _PickedImage(
+          id: '${seed}_camera_$index',
+          name: 'camera_${index + 1}.jpg',
+          bytes: bytes,
+        ),
+      );
+      index += 1;
+
+      if (!mounted) {
+        break;
+      }
+
+      final takeAnother = await _askTakeAnotherPhoto(captured.length);
+      if (!takeAnother) {
+        break;
+      }
+    }
+
+    return captured;
+  }
+
   Future<_ImagePdfSetupResult?> _showImagePdfSetupDialog(
-    List<_PickedImage> initialImages,
-  ) async {
+    List<_PickedImage> initialImages, {
+    bool allowAddImages = true,
+  }) async {
     var pageMode = _ImagePdfPageMode.a4;
     final images = <_PickedImage>[...initialImages];
     String? hoveredImageId;
@@ -186,20 +412,21 @@ class _HomeScreenState extends State<HomeScreen> {
                 const SizedBox(height: 12),
                 Row(
                   children: <Widget>[
-                    FilledButton.tonalIcon(
-                      onPressed: () async {
-                        final more = await _pickImageFiles();
-                        if (more.isEmpty) {
-                          return;
-                        }
-                        setDialogState(() {
-                          images.addAll(more);
-                        });
-                      },
-                      icon: const Icon(Icons.add_photo_alternate_outlined),
-                      label: const Text('Add images'),
-                    ),
-                    const SizedBox(width: 8),
+                    if (allowAddImages)
+                      FilledButton.tonalIcon(
+                        onPressed: () async {
+                          final more = await _pickImageFiles();
+                          if (more.isEmpty) {
+                            return;
+                          }
+                          setDialogState(() {
+                            images.addAll(more);
+                          });
+                        },
+                        icon: const Icon(Icons.add_photo_alternate_outlined),
+                        label: const Text('Add images'),
+                      ),
+                    if (allowAddImages) const SizedBox(width: 8),
                     Text('${images.length} selected'),
                   ],
                 ),
@@ -262,7 +489,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                         vertical: 4,
                                       ),
                                       decoration: BoxDecoration(
-                                        color: Colors.black.withValues(alpha: 0.55),
+                                        color: Colors.black.withValues(
+                                          alpha: 0.55,
+                                        ),
                                         borderRadius: BorderRadius.circular(10),
                                       ),
                                       child: Text(
@@ -278,10 +507,17 @@ class _HomeScreenState extends State<HomeScreen> {
                                     top: 6,
                                     right: 6,
                                     child: AnimatedOpacity(
-                                      duration: const Duration(milliseconds: 120),
-                                      opacity: (hoveredImageId == item.id || !kIsWeb) ? 1 : 0,
+                                      duration: const Duration(
+                                        milliseconds: 120,
+                                      ),
+                                      opacity:
+                                          (hoveredImageId == item.id || !kIsWeb)
+                                          ? 1
+                                          : 0,
                                       child: Material(
-                                        color: Colors.black.withValues(alpha: 0.55),
+                                        color: Colors.black.withValues(
+                                          alpha: 0.55,
+                                        ),
                                         shape: const CircleBorder(),
                                         child: InkWell(
                                           customBorder: const CircleBorder(),
@@ -313,12 +549,17 @@ class _HomeScreenState extends State<HomeScreen> {
                               key: ValueKey(item.id),
                               width: 150,
                               child: Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 6),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                ),
                                 child: Center(
                                   child: SizedBox.square(
                                     dimension: 136,
                                     child: kIsWeb
-                                        ? ReorderableDragStartListener(index: index, child: tile)
+                                        ? ReorderableDragStartListener(
+                                            index: index,
+                                            child: tile,
+                                          )
                                         : ReorderableDelayedDragStartListener(
                                             index: index,
                                             child: tile,
@@ -372,50 +613,55 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    final doc = pw.Document();
-    var addedPages = 0;
-    for (final pickedImage in setup.images) {
-      final decoded = img.decodeImage(pickedImage.bytes);
-      if (decoded == null) {
-        continue;
-      }
-
-      final image = pw.MemoryImage(img.encodePng(decoded));
-      final pageFormat = setup.pageMode == _ImagePdfPageMode.matchImage
-          ? pdf.PdfPageFormat(
-              decoded.width.toDouble(),
-              decoded.height.toDouble(),
-              marginAll: 0,
-            )
-          : pdf.PdfPageFormat.a4;
-
-      doc.addPage(
-        pw.Page(
-          pageFormat: pageFormat,
-          margin: setup.pageMode == _ImagePdfPageMode.matchImage
-              ? pw.EdgeInsets.zero
-              : const pw.EdgeInsets.all(20),
-          build: (_) => pw.Center(
-            child: pw.FittedBox(
-              fit: pw.BoxFit.contain,
-              child: pw.Image(image),
-            ),
-          ),
-        ),
-      );
-      addedPages += 1;
-    }
-
-    if (addedPages == 0) {
+    final pdfBytes = await _buildPdfBytesFromImages(
+      setup.images,
+      setup.pageMode,
+    );
+    if (pdfBytes == null) {
       _showMessage('No valid image pages found to create a PDF.');
       return;
     }
 
     final saved = await _saveBytes(
       'images_to_pdf_${_timestamp()}.pdf',
-      await doc.save(),
+      pdfBytes,
     );
-    _showMessage('Saved: $saved');
+    _showMessage(saved);
+  }
+
+  Future<void> _cameraToPdf() async {
+    if (!_isMobilePlatform) {
+      _showMessage('Camera capture is only available on Android and iOS.');
+      return;
+    }
+
+    final capturedImages = await _captureCameraImages();
+    if (capturedImages.isEmpty || !mounted) {
+      return;
+    }
+
+    final setup = await _showImagePdfSetupDialog(
+      capturedImages,
+      allowAddImages: false,
+    );
+    if (setup == null || setup.images.isEmpty) {
+      return;
+    }
+
+    final pdfBytes = await _buildPdfBytesFromImages(
+      setup.images,
+      setup.pageMode,
+    );
+    if (pdfBytes == null) {
+      _showMessage('No valid captured images found to create a PDF.');
+      return;
+    }
+
+    final saved = await _saveBytes(
+      'camera_to_pdf_${_timestamp()}.pdf',
+      pdfBytes,
+    );
+    _showMessage(saved);
   }
 
   Future<void> _pdfToImages() async {
@@ -437,17 +683,33 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     var pageCounter = 0;
+    var gallerySavedCount = 0;
     await for (final page in Printing.raster(pdfBytes, dpi: 144)) {
       pageCounter += 1;
+      final stamp = _timestamp();
       final png = await page.toPng();
-      await _saveBytes('pdf_page_${_timestamp()}_$pageCounter.png', png);
+      final jpgBytes = _convertPngToJpg(png);
+      final imageName = 'pdf_page_${stamp}_$pageCounter';
+
+      await _saveBytes('$imageName.jpg', jpgBytes);
+
+      final savedToGallery = await _saveImageToGallery(jpgBytes, imageName);
+      if (savedToGallery) {
+        gallerySavedCount += 1;
+      }
     }
 
     if (pageCounter == 0) {
       _showMessage('No pages rendered');
       return;
     }
-    _showMessage('$pageCounter page images saved');
+    if (_isMobilePlatform) {
+      _showMessage(
+        '$pageCounter JPG page image(s) saved. Added $gallerySavedCount to gallery.',
+      );
+    } else {
+      _showMessage('$pageCounter JPG page image(s) saved');
+    }
   }
 
   Future<void> _pdfToText() async {
@@ -473,49 +735,61 @@ class _HomeScreenState extends State<HomeScreen> {
     final text = extractor.extractText();
     document.dispose();
 
-    final outputPath = await _saveBytes(
-      'pdf_text_${_timestamp()}.txt',
-      Uint8List.fromList(text.codeUnits),
-    );
-    _showMessage('Saved: $outputPath');
-  }
-
-  Future<String?> _extractPdfText() async {
-    final picked = await FilePicker.platform.pickFiles(
-      allowMultiple: false,
-      type: FileType.custom,
-      allowedExtensions: <String>['pdf'],
-      withData: true,
-    );
-    final selected = picked?.files.single;
-    if (selected == null) {
-      return null;
-    }
-
-    final bytes = await _readPickedFileBytes(selected);
-    if (bytes == null) {
-      _showMessage('Could not read selected PDF');
-      return null;
-    }
-
-    final document = sfpdf.PdfDocument(inputBytes: bytes);
-    final extractor = sfpdf.PdfTextExtractor(document);
-    final text = extractor.extractText();
-    document.dispose();
-    return text;
-  }
-
-  Future<void> _pdfToWord() async {
-    final text = await _extractPdfText();
-    if (text == null) {
+    if (!mounted) {
       return;
     }
 
-    final outputPath = await _saveBytes(
-      'pdf_to_word_${_timestamp()}.doc',
-      Uint8List.fromList(text.codeUnits),
+    await _showExtractedTextDialog(text);
+  }
+
+  Future<void> _showExtractedTextDialog(String text) async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        titlePadding: const EdgeInsets.fromLTRB(16, 10, 8, 0),
+        title: Row(
+          children: <Widget>[
+            const Expanded(
+              child: Text(
+                'Extracted Text',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
+            IconButton(
+              tooltip: 'Copy',
+              icon: const Icon(Icons.copy_outlined),
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: text));
+                if (!mounted) {
+                  return;
+                }
+                _showMessage('Text copied to clipboard');
+              },
+            ),
+            IconButton(
+              tooltip: 'Close',
+              icon: const Icon(Icons.close),
+              onPressed: () => Navigator.of(dialogContext).pop(),
+            ),
+          ],
+        ),
+        content: SizedBox(
+          width: 640,
+          height: 420,
+          child: text.trim().isEmpty
+              ? const Center(child: Text('No readable text found in this PDF.'))
+              : Scrollbar(
+                  thumbVisibility: true,
+                  child: SingleChildScrollView(
+                    child: SelectableText(
+                      text,
+                      style: const TextStyle(height: 1.35),
+                    ),
+                  ),
+                ),
+        ),
+      ),
     );
-    _showMessage('Saved: $outputPath');
   }
 
   Future<void> _cropPhoto() async {
@@ -541,10 +815,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final croppedBytes = await Navigator.of(context).push<Uint8List>(
       MaterialPageRoute(
-        builder: (_) => _ManualCropScreen(
-          imageBytes: sourceBytes,
-          title: selected.name,
-        ),
+        builder: (_) =>
+            _ManualCropScreen(imageBytes: sourceBytes, title: selected.name),
       ),
     );
 
@@ -552,14 +824,21 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    final outputPath = await _saveBytes('cropped_${_timestamp()}.png', croppedBytes);
-    _showMessage('Saved: $outputPath');
+    final outputPath = await _saveBytes(
+      'cropped_${_timestamp()}.png',
+      croppedBytes,
+    );
+    _showMessage(outputPath);
   }
 
   @override
   Widget build(BuildContext context) {
-    final width = MediaQuery.of(context).size.width;
+    final mediaQuery = MediaQuery.of(context);
+    final width = mediaQuery.size.width;
     final webStyle = kIsWeb || width >= 900;
+    final appTextScaler = _isMobilePlatform
+        ? const TextScaler.linear(0.92)
+        : mediaQuery.textScaler;
     final actions = <_ToolAction>[
       _ToolAction(
         icon: Icons.picture_as_pdf_rounded,
@@ -568,26 +847,27 @@ class _HomeScreenState extends State<HomeScreen> {
         color: const Color(0xFFB71C1C),
         onTap: () => _runTask('Images to PDF', _imageToPdf),
       ),
+      if (_isMobilePlatform)
+        _ToolAction(
+          icon: Icons.camera_alt_outlined,
+          title: 'Camera to PDF',
+          subtitle: 'Capture multiple photos into one PDF',
+          color: const Color(0xFF2E7D32),
+          onTap: () => _runTask('Camera to PDF', _cameraToPdf),
+        ),
       _ToolAction(
         icon: Icons.image_outlined,
         title: 'PDF to Images',
-        subtitle: 'Export each page as PNG',
+        subtitle: 'Export each page as JPG',
         color: const Color(0xFFAD1457),
         onTap: () => _runTask('PDF to Images', _pdfToImages),
       ),
       _ToolAction(
         icon: Icons.text_snippet_outlined,
         title: 'PDF to Text',
-        subtitle: 'Extract plain text',
+        subtitle: 'Extract and view text with copy option',
         color: const Color(0xFF6A1B9A),
         onTap: () => _runTask('PDF to Text', _pdfToText),
-      ),
-      _ToolAction(
-        icon: Icons.article_outlined,
-        title: 'PDF to Word',
-        subtitle: 'Create a simple .doc text export',
-        color: const Color(0xFF1565C0),
-        onTap: () => _runTask('PDF to Word', _pdfToWord),
       ),
       _ToolAction(
         icon: Icons.crop,
@@ -598,141 +878,200 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     ];
 
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        flexibleSpace: Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.centerLeft,
-              end: Alignment.centerRight,
-              colors: <Color>[Colors.white, Color(0xFFB71C1C)],
-            ),
-          ),
-        ),
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            ClipRRect(
-              borderRadius: BorderRadius.circular(6),
-              child: Image.asset(
-                'PDF_icon.jpg',
-                width: 30,
-                height: 30,
-                fit: BoxFit.cover,
+    return MediaQuery(
+      data: mediaQuery.copyWith(textScaler: appTextScaler),
+      child: Scaffold(
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          flexibleSpace: Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.centerLeft,
+                end: Alignment.centerRight,
+                colors: <Color>[Colors.white, Color(0xFFB71C1C)],
               ),
             ),
-            const SizedBox(width: 10),
-            const Text(
-              'Local PDF Studio',
-              style: TextStyle(
-                color: Color(0xFF7F0000),
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
-        ),
-      ),
-      body: SafeArea(
-        child: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: <Color>[
-                const Color(0xFFFFEBEE),
-                const Color(0xFFFFF3E0),
-                Theme.of(context).colorScheme.surface,
-              ],
-            ),
           ),
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 1480),
-              child: Padding(
-                padding: EdgeInsets.symmetric(
-                  horizontal: webStyle ? 12 : 14,
-                  vertical: webStyle ? 20 : 14,
+          title: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: Image.asset(
+                  'PDF_icon.jpg',
+                  width: 30,
+                  height: 30,
+                  fit: BoxFit.cover,
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Container(
-                      width: double.infinity,
-                      padding: EdgeInsets.all(webStyle ? 24 : 16),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(18),
-                        gradient: const LinearGradient(
-                          colors: <Color>[Color(0xFFB71C1C), Color(0xFFE53935)],
-                        ),
+              ),
+              const SizedBox(width: 10),
+              const Text(
+                'Local PDF Studio',
+                style: TextStyle(
+                  color: Color(0xFF7F0000),
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+        body: SafeArea(
+          child: Stack(
+            children: <Widget>[
+              Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: <Color>[
+                      const Color(0xFFFFEBEE),
+                      const Color(0xFFFFF3E0),
+                      Theme.of(context).colorScheme.surface,
+                    ],
+                  ),
+                ),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 1480),
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: webStyle ? 12 : 14,
+                        vertical: webStyle ? 20 : 14,
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
-                          Text(
-                            webStyle ? 'PDF + Image Toolkit' : 'Local PDF Toolkit',
-                            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w700,
+                          Container(
+                            width: double.infinity,
+                            padding: EdgeInsets.all(webStyle ? 24 : 16),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(18),
+                              gradient: const LinearGradient(
+                                colors: <Color>[
+                                  Color(0xFFB71C1C),
+                                  Color(0xFFE53935),
+                                ],
+                              ),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: <Widget>[
+                                Text(
+                                  webStyle
+                                      ? 'PDF + Image Toolkit'
+                                      : 'Local PDF Toolkit',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .headlineSmall
+                                      ?.copyWith(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w700,
+                                      ),
                                 ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Works offline on web and mobile. Pick a tool and save instantly.',
+                                  style: Theme.of(context).textTheme.bodyMedium
+                                      ?.copyWith(
+                                        color: Colors.white.withValues(
+                                          alpha: 0.95,
+                                        ),
+                                      ),
+                                ),
+                              ],
+                            ),
                           ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Works offline on web and mobile. Pick a tool and save instantly.',
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                  color: Colors.white.withValues(alpha: 0.95),
+                          const SizedBox(height: 14),
+                          Row(
+                            children: <Widget>[
+                              Expanded(child: Text('Status: $_status')),
+                              if (_isWorking)
+                                const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.2,
+                                  ),
                                 ),
+                            ],
+                          ),
+                          const SizedBox(height: 14),
+                          Expanded(
+                            child: LayoutBuilder(
+                              builder: (context, constraints) {
+                                final isMobileWidth =
+                                    constraints.maxWidth < 760;
+                                final gridColumns = isMobileWidth
+                                    ? 1
+                                    : (constraints.maxWidth >= 980 ? 3 : 2);
+                                final cardHeight = isMobileWidth
+                                    ? 118.0
+                                    : 112.0;
+                                return GridView.builder(
+                                  gridDelegate:
+                                      SliverGridDelegateWithFixedCrossAxisCount(
+                                        crossAxisCount: gridColumns,
+                                        mainAxisExtent: cardHeight,
+                                        crossAxisSpacing: 12,
+                                        mainAxisSpacing: 12,
+                                      ),
+                                  itemCount: actions.length,
+                                  itemBuilder: (context, index) {
+                                    final action = actions[index];
+                                    return _ToolCard(
+                                      icon: action.icon,
+                                      title: action.title,
+                                      subtitle: action.subtitle,
+                                      color: action.color,
+                                      onTap: _isWorking ? null : action.onTap,
+                                    );
+                                  },
+                                );
+                              },
+                            ),
                           ),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 14),
-                    Row(
-                      children: <Widget>[
-                        Expanded(child: Text('Status: $_status')),
-                        if (_isWorking)
-                          const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2.2),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 14),
-                    Expanded(
-                      child: LayoutBuilder(
-                        builder: (context, constraints) {
-                          final isMobileWidth = constraints.maxWidth < 760;
-                          final gridColumns = isMobileWidth
-                              ? 1
-                              : (constraints.maxWidth >= 980 ? 3 : 2);
-                          return GridView.builder(
-                            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: gridColumns,
-                              mainAxisExtent: 112,
-                              crossAxisSpacing: 12,
-                              mainAxisSpacing: 12,
-                            ),
-                            itemCount: actions.length,
-                            itemBuilder: (context, index) {
-                              final action = actions[index];
-                              return _ToolCard(
-                                icon: action.icon,
-                                title: action.title,
-                                subtitle: action.subtitle,
-                                color: action.color,
-                                onTap: _isWorking ? null : action.onTap,
-                              );
-                            },
-                          );
-                        },
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ),
-            ),
+              if (_isWorking)
+                Positioned.fill(
+                  child: ColoredBox(
+                    color: Colors.black.withValues(alpha: 0.35),
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 280),
+                        child: Card(
+                          elevation: 6,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 20,
+                              vertical: 18,
+                            ),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: <Widget>[
+                                const CircularProgressIndicator(),
+                                const SizedBox(height: 12),
+                                Text(
+                                  _status,
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
           ),
         ),
       ),
@@ -758,6 +1097,31 @@ class _ToolAction {
 
 enum _ImagePdfPageMode { a4, matchImage }
 
+class _ProcessedPdfImage {
+  const _ProcessedPdfImage({
+    required this.width,
+    required this.height,
+    required this.pngBytes,
+  });
+
+  final int width;
+  final int height;
+  final Uint8List pngBytes;
+}
+
+_ProcessedPdfImage? _prepareImageForPdf(Uint8List sourceBytes) {
+  final decoded = img.decodeImage(sourceBytes);
+  if (decoded == null) {
+    return null;
+  }
+
+  return _ProcessedPdfImage(
+    width: decoded.width,
+    height: decoded.height,
+    pngBytes: Uint8List.fromList(img.encodePng(decoded)),
+  );
+}
+
 class _PickedImage {
   const _PickedImage({
     required this.id,
@@ -771,10 +1135,7 @@ class _PickedImage {
 }
 
 class _ImagePdfSetupResult {
-  const _ImagePdfSetupResult({
-    required this.pageMode,
-    required this.images,
-  });
+  const _ImagePdfSetupResult({required this.pageMode, required this.images});
 
   final _ImagePdfPageMode pageMode;
   final List<_PickedImage> images;
