@@ -5,13 +5,14 @@ import 'package:file_saver/file_saver.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart' as pdf;
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
-import 'package:syncfusion_flutter_pdf/pdf.dart' as sfpdf;
+import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 
 void main() {
   runApp(const LocalPdfStudioApp());
@@ -26,8 +27,13 @@ class LocalPdfStudioApp extends StatelessWidget {
       title: 'PDF Studio',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF0B7A75)),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF0B7A75),
+          primary: const Color(0xFFB71C1C),
+          secondary: const Color(0xFF0B7A75),
+        ),
         useMaterial3: true,
+        textTheme: GoogleFonts.quicksandTextTheme(),
       ),
       home: const HomeScreen(),
     );
@@ -212,7 +218,7 @@ class _HomeScreenState extends State<HomeScreen> {
         continue;
       }
 
-      final image = pw.MemoryImage(processed.pngBytes);
+      final image = pw.MemoryImage(processed.jpegBytes);
       final pageFormat = pageMode == _ImagePdfPageMode.matchImage
           ? pdf.PdfPageFormat(
               processed.width.toDouble(),
@@ -249,7 +255,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (decoded == null) {
       return pngBytes;
     }
-    return Uint8List.fromList(img.encodeJpg(decoded, quality: 94));
+    return Uint8List.fromList(img.encodeJpg(decoded, quality: 85));
   }
 
   Future<List<_PickedImage>> _pickImageFiles() async {
@@ -293,71 +299,9 @@ class _HomeScreenState extends State<HomeScreen> {
     return items;
   }
 
-  Future<bool> _askTakeAnotherPhoto(int capturedCount) async {
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Add another photo?'),
-        content: Text(
-          'Captured $capturedCount photo${capturedCount == 1 ? '' : 's'}.',
-        ),
-        actions: <Widget>[
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Finish'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Take another'),
-          ),
-        ],
-      ),
-    );
-    return result ?? false;
-  }
-
-  Future<List<_PickedImage>> _captureCameraImages() async {
-    if (!_isMobilePlatform) {
-      return <_PickedImage>[];
-    }
-
-    final captured = <_PickedImage>[];
-    final seed = DateTime.now().microsecondsSinceEpoch;
-    var index = 0;
-
-    while (true) {
-      final shot = await _imagePicker.pickImage(source: ImageSource.camera);
-      if (shot == null) {
-        break;
-      }
-
-      final bytes = await shot.readAsBytes();
-      captured.add(
-        _PickedImage(
-          id: '${seed}_camera_$index',
-          name: 'camera_${index + 1}.jpg',
-          bytes: bytes,
-        ),
-      );
-      index += 1;
-
-      if (!mounted) {
-        break;
-      }
-
-      final takeAnother = await _askTakeAnotherPhoto(captured.length);
-      if (!takeAnother) {
-        break;
-      }
-    }
-
-    return captured;
-  }
-
   Future<_ImagePdfSetupResult?> _showImagePdfSetupDialog(
-    List<_PickedImage> initialImages, {
-    bool allowAddImages = true,
-  }) async {
+    List<_PickedImage> initialImages,
+  ) async {
     var pageMode = _ImagePdfPageMode.a4;
     final images = <_PickedImage>[...initialImages];
     String? hoveredImageId;
@@ -369,7 +313,7 @@ class _HomeScreenState extends State<HomeScreen> {
           title: const Text('Prepare PDF'),
           content: SizedBox(
             width: 620,
-            height: 450,
+            height: 480,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
@@ -398,167 +342,244 @@ class _HomeScreenState extends State<HomeScreen> {
                     });
                   },
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 16),
                 Row(
                   children: <Widget>[
-                    if (allowAddImages)
-                      FilledButton.tonalIcon(
-                        onPressed: () async {
-                          final more = await _pickImageFiles();
-                          if (more.isEmpty) {
-                            return;
-                          }
+                    FilledButton.tonalIcon(
+                      onPressed: () async {
+                        final more = await _pickImageFiles();
+                        if (more.isNotEmpty) {
                           setDialogState(() {
                             images.addAll(more);
                           });
-                        },
-                        icon: const Icon(Icons.add_photo_alternate_outlined),
-                        label: const Text('Add images'),
-                      ),
-                    if (allowAddImages) const SizedBox(width: 8),
+                        }
+                      },
+                      icon: const Icon(Icons.photo_library_outlined),
+                      label: const Text('Gallery'),
+                    ),
+                    const SizedBox(width: 8),
+                    FilledButton.tonalIcon(
+                      onPressed: () async {
+                        final shot = await _imagePicker.pickImage(
+                          source: ImageSource.camera,
+                        );
+                        if (shot != null) {
+                          final bytes = await shot.readAsBytes();
+                          setDialogState(() {
+                            images.add(
+                              _PickedImage(
+                                id:
+                                    '${DateTime.now().microsecondsSinceEpoch}_camera',
+                                name: 'camera_${images.length + 1}.jpg',
+                                bytes: bytes,
+                              ),
+                            );
+                          });
+                        }
+                      },
+                      icon: const Icon(Icons.camera_alt_outlined),
+                      label: const Text('Camera'),
+                    ),
+                    const Spacer(),
                     Text('${images.length} selected'),
                   ],
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: 12),
                 Text(
-                  'Drag thumbnails to sort page order',
+                  'Drag thumbnails to sort. Tap icons to crop or remove.',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
                 const SizedBox(height: 10),
-                SizedBox(
-                  height: 160,
-                  child: images.isEmpty
-                      ? const Center(child: Text('No images selected'))
-                      : ReorderableListView.builder(
-                          scrollDirection: Axis.horizontal,
-                          buildDefaultDragHandles: false,
-                          padding: const EdgeInsets.symmetric(horizontal: 4),
-                          itemCount: images.length,
-                          onReorder: (oldIndex, newIndex) {
-                            setDialogState(() {
-                              if (newIndex > oldIndex) {
-                                newIndex -= 1;
-                              }
-                              final item = images.removeAt(oldIndex);
-                              images.insert(newIndex, item);
-                            });
-                          },
-                          itemBuilder: (context, index) {
-                            final item = images[index];
-                            final tile = MouseRegion(
-                              onEnter: (_) {
-                                setDialogState(() {
-                                  hoveredImageId = item.id;
-                                });
-                              },
-                              onExit: (_) {
-                                setDialogState(() {
-                                  if (hoveredImageId == item.id) {
-                                    hoveredImageId = null;
-                                  }
-                                });
-                              },
-                              child: Stack(
-                                children: <Widget>[
-                                  Positioned.fill(
-                                    child: ClipRRect(
-                                      borderRadius: BorderRadius.circular(14),
-                                      child: Image.memory(
-                                        item.bytes,
-                                        fit: BoxFit.cover,
-                                      ),
-                                    ),
-                                  ),
-                                  Positioned(
-                                    left: 8,
-                                    bottom: 8,
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 4,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: Colors.black.withValues(
-                                          alpha: 0.55,
-                                        ),
-                                        borderRadius: BorderRadius.circular(10),
-                                      ),
-                                      child: Text(
-                                        '${index + 1}',
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.w700,
+                Expanded(
+                  child:
+                      images.isEmpty
+                          ? const Center(child: Text('No images selected'))
+                          : ReorderableListView.builder(
+                            scrollDirection: Axis.horizontal,
+                            buildDefaultDragHandles: false,
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                            itemCount: images.length,
+                            onReorder: (oldIndex, newIndex) {
+                              setDialogState(() {
+                                if (newIndex > oldIndex) {
+                                  newIndex -= 1;
+                                }
+                                final item = images.removeAt(oldIndex);
+                                images.insert(newIndex, item);
+                              });
+                            },
+                            itemBuilder: (context, index) {
+                              final item = images[index];
+                              final tile = MouseRegion(
+                                onEnter: (_) {
+                                  setDialogState(() {
+                                    hoveredImageId = item.id;
+                                  });
+                                },
+                                onExit: (_) {
+                                  setDialogState(() {
+                                    if (hoveredImageId == item.id) {
+                                      hoveredImageId = null;
+                                    }
+                                  });
+                                },
+                                child: Stack(
+                                  children: <Widget>[
+                                    Positioned.fill(
+                                      child: ClipRRect(
+                                        borderRadius: BorderRadius.circular(14),
+                                        child: Image.memory(
+                                          item.bytes,
+                                          fit: BoxFit.cover,
                                         ),
                                       ),
                                     ),
-                                  ),
-                                  Positioned(
-                                    top: 6,
-                                    right: 6,
-                                    child: AnimatedOpacity(
-                                      duration: const Duration(
-                                        milliseconds: 120,
-                                      ),
-                                      opacity:
-                                          (hoveredImageId == item.id || !kIsWeb)
-                                          ? 1
-                                          : 0,
-                                      child: Material(
-                                        color: Colors.black.withValues(
-                                          alpha: 0.55,
+                                    Positioned(
+                                      left: 8,
+                                      bottom: 8,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 4,
                                         ),
-                                        shape: const CircleBorder(),
-                                        child: InkWell(
-                                          customBorder: const CircleBorder(),
-                                          onTap: () {
-                                            setDialogState(() {
-                                              images.removeAt(index);
-                                              if (hoveredImageId == item.id) {
-                                                hoveredImageId = null;
-                                              }
-                                            });
-                                          },
-                                          child: const Padding(
-                                            padding: EdgeInsets.all(5),
-                                            child: Icon(
-                                              Icons.close,
-                                              size: 15,
-                                              color: Colors.white,
+                                        decoration: BoxDecoration(
+                                          color: Colors.black.withValues(
+                                            alpha: 0.55,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            10,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          '${index + 1}',
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    Positioned(
+                                      top: 6,
+                                      right: 6,
+                                      child: AnimatedOpacity(
+                                        duration: const Duration(
+                                          milliseconds: 120,
+                                        ),
+                                        opacity:
+                                            (hoveredImageId == item.id ||
+                                                    !kIsWeb)
+                                                ? 1
+                                                : 0,
+                                        child: Column(
+                                          children: <Widget>[
+                                            Material(
+                                              color: Colors.black.withValues(
+                                                alpha: 0.55,
+                                              ),
+                                              shape: const CircleBorder(),
+                                              child: InkWell(
+                                                customBorder:
+                                                    const CircleBorder(),
+                                                onTap: () {
+                                                  setDialogState(() {
+                                                    images.removeAt(index);
+                                                    if (hoveredImageId ==
+                                                        item.id) {
+                                                      hoveredImageId = null;
+                                                    }
+                                                  });
+                                                },
+                                                child: const Padding(
+                                                  padding: EdgeInsets.all(5),
+                                                  child: Icon(
+                                                    Icons.close,
+                                                    size: 15,
+                                                    color: Colors.white,
+                                                  ),
+                                                ),
+                                              ),
                                             ),
-                                          ),
+                                            const SizedBox(height: 6),
+                                            Material(
+                                              color: Colors.black.withValues(
+                                                alpha: 0.55,
+                                              ),
+                                              shape: const CircleBorder(),
+                                              child: InkWell(
+                                                customBorder:
+                                                    const CircleBorder(),
+                                                onTap: () async {
+                                                  final cropped =
+                                                      await Navigator.of(
+                                                        context,
+                                                      ).push<Uint8List>(
+                                                        MaterialPageRoute(
+                                                          builder:
+                                                              (_) =>
+                                                                  _ManualCropScreen(
+                                                                    imageBytes:
+                                                                        item.bytes,
+                                                                    title:
+                                                                        item.name,
+                                                                  ),
+                                                        ),
+                                                      );
+                                                  if (cropped != null) {
+                                                    setDialogState(() {
+                                                      images[index] =
+                                                          _PickedImage(
+                                                            id: item.id,
+                                                            name: item.name,
+                                                            bytes: cropped,
+                                                          );
+                                                    });
+                                                  }
+                                                },
+                                                child: const Padding(
+                                                  padding: EdgeInsets.all(5),
+                                                  child: Icon(
+                                                    Icons.crop,
+                                                    size: 15,
+                                                    color: Colors.white,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ],
                                         ),
                                       ),
                                     ),
-                                  ),
-                                ],
-                              ),
-                            );
+                                  ],
+                                ),
+                              );
 
-                            return SizedBox(
-                              key: ValueKey(item.id),
-                              width: 150,
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 6,
-                                ),
-                                child: Center(
-                                  child: SizedBox.square(
-                                    dimension: 136,
-                                    child: kIsWeb
-                                        ? ReorderableDragStartListener(
-                                            index: index,
-                                            child: tile,
-                                          )
-                                        : ReorderableDelayedDragStartListener(
-                                            index: index,
-                                            child: tile,
-                                          ),
+                              return SizedBox(
+                                key: ValueKey(item.id),
+                                width: 150,
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                  ),
+                                  child: Center(
+                                    child: SizedBox.square(
+                                      dimension: 136,
+                                      child:
+                                          kIsWeb
+                                              ? ReorderableDragStartListener(
+                                                index: index,
+                                                child: tile,
+                                              )
+                                              : ReorderableDelayedDragStartListener(
+                                                index: index,
+                                                child: tile,
+                                              ),
+                                    ),
                                   ),
                                 ),
-                              ),
-                            );
-                          },
-                        ),
+                              );
+                            },
+                          ),
                 ),
               ],
             ),
@@ -569,16 +590,17 @@ class _HomeScreenState extends State<HomeScreen> {
               child: const Text('Cancel'),
             ),
             FilledButton(
-              onPressed: images.isEmpty
-                  ? null
-                  : () {
-                      Navigator.of(context).pop(
-                        _ImagePdfSetupResult(
-                          pageMode: pageMode,
-                          images: List<_PickedImage>.from(images),
-                        ),
-                      );
-                    },
+              onPressed:
+                  images.isEmpty
+                      ? null
+                      : () {
+                        Navigator.of(context).pop(
+                          _ImagePdfSetupResult(
+                            pageMode: pageMode,
+                            images: List<_PickedImage>.from(images),
+                          ),
+                        );
+                      },
               child: const Text('Create PDF'),
             ),
           ],
@@ -619,20 +641,25 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _cameraToPdf() async {
-    if (!_isMobilePlatform) {
-      _showMessage('Camera capture is only available on Android and iOS.');
+    final shot = await _imagePicker.pickImage(source: ImageSource.camera);
+    if (shot == null) {
       return;
     }
 
-    final capturedImages = await _captureCameraImages();
-    if (capturedImages.isEmpty || !mounted) {
+    final bytes = await shot.readAsBytes();
+    final initial = [
+      _PickedImage(
+        id: '${DateTime.now().microsecondsSinceEpoch}_camera',
+        name: 'camera_1.jpg',
+        bytes: bytes,
+      ),
+    ];
+
+    if (!mounted) {
       return;
     }
 
-    final setup = await _showImagePdfSetupDialog(
-      capturedImages,
-      allowAddImages: false,
-    );
+    final setup = await _showImagePdfSetupDialog(initial);
     if (setup == null || setup.images.isEmpty) {
       return;
     }
@@ -689,34 +716,95 @@ class _HomeScreenState extends State<HomeScreen> {
     _showMessage('$pageCounter JPG page image(s) saved');
   }
 
-  Future<void> _pdfToText() async {
-    final picked = await FilePicker.platform.pickFiles(
-      allowMultiple: false,
-      type: FileType.custom,
-      allowedExtensions: <String>['pdf'],
-      withData: true,
+  Future<void> _textExtraction() async {
+    if (kIsWeb) {
+      _showMessage('Text extraction is not yet supported on Web.');
+      return;
+    }
+
+    final source = await showDialog<_TextSource>(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Extract text from?'),
+            actions: <Widget>[
+              TextButton.icon(
+                onPressed: () => Navigator.of(context).pop(_TextSource.camera),
+                icon: const Icon(Icons.camera_alt_outlined),
+                label: const Text('Camera'),
+              ),
+              TextButton.icon(
+                onPressed: () => Navigator.of(context).pop(_TextSource.pdf),
+                icon: const Icon(Icons.picture_as_pdf_outlined),
+                label: const Text('PDF File'),
+              ),
+            ],
+          ),
     );
-    final selected = picked?.files.single;
-    if (selected == null) {
+
+    if (source == null) {
       return;
     }
 
-    final bytes = await _readPickedFileBytes(selected);
-    if (bytes == null) {
-      _showMessage('Could not read selected PDF');
-      return;
-    }
+    String extractedText = '';
 
-    final document = sfpdf.PdfDocument(inputBytes: bytes);
-    final extractor = sfpdf.PdfTextExtractor(document);
-    final text = extractor.extractText();
-    document.dispose();
+    if (source == _TextSource.camera) {
+      final shot = await _imagePicker.pickImage(source: ImageSource.camera);
+      if (shot == null) {
+        return;
+      }
+      final inputImage = InputImage.fromFilePath(shot.path);
+      extractedText = await _performOcr(inputImage);
+    } else {
+      final picked = await FilePicker.platform.pickFiles(
+        allowMultiple: false,
+        type: FileType.custom,
+        allowedExtensions: <String>['pdf'],
+        withData: true,
+      );
+      final selected = picked?.files.single;
+      if (selected == null) {
+        return;
+      }
+
+      final bytes = await _readPickedFileBytes(selected);
+      if (bytes == null) {
+        _showMessage('Could not read selected PDF');
+        return;
+      }
+
+      final buffer = StringBuffer();
+      await for (final page in Printing.raster(bytes, dpi: 144)) {
+        final pngBytes = await page.toPng();
+        final tempDir = await getTemporaryDirectory();
+        final tempFile = File('${tempDir.path}/ocr_page.png');
+        await tempFile.writeAsBytes(pngBytes);
+        final inputImage = InputImage.fromFilePath(tempFile.path);
+        final pageText = await _performOcr(inputImage);
+        buffer.writeln(pageText);
+      }
+      extractedText = buffer.toString();
+    }
 
     if (!mounted) {
       return;
     }
 
-    await _showExtractedTextDialog(text);
+    await _showExtractedTextDialog(extractedText);
+  }
+
+  Future<String> _performOcr(InputImage inputImage) async {
+    final textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
+    try {
+      final RecognizedText recognizedText = await textRecognizer.processImage(
+        inputImage,
+      );
+      return recognizedText.text;
+    } catch (e) {
+      return 'OCR Error: $e';
+    } finally {
+      textRecognizer.close();
+    }
   }
 
   Future<void> _showExtractedTextDialog(String text) async {
@@ -753,17 +841,20 @@ class _HomeScreenState extends State<HomeScreen> {
         content: SizedBox(
           width: 640,
           height: 420,
-          child: text.trim().isEmpty
-              ? const Center(child: Text('No readable text found in this PDF.'))
-              : Scrollbar(
-                  thumbVisibility: true,
-                  child: SingleChildScrollView(
-                    child: SelectableText(
-                      text,
-                      style: const TextStyle(height: 1.35),
+          child:
+              text.trim().isEmpty
+                  ? const Center(
+                    child: Text('No readable text found in this PDF.'),
+                  )
+                  : Scrollbar(
+                    thumbVisibility: true,
+                    child: SingleChildScrollView(
+                      child: SelectableText(
+                        text,
+                        style: const TextStyle(height: 1.35),
+                      ),
                     ),
                   ),
-                ),
         ),
       ),
     );
@@ -792,8 +883,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final croppedBytes = await Navigator.of(context).push<Uint8List>(
       MaterialPageRoute(
-        builder: (_) =>
-            _ManualCropScreen(imageBytes: sourceBytes, title: selected.name),
+        builder:
+            (_) =>
+                _ManualCropScreen(imageBytes: sourceBytes, title: selected.name),
       ),
     );
 
@@ -808,14 +900,23 @@ class _HomeScreenState extends State<HomeScreen> {
     _showMessage(outputPath);
   }
 
+  void _navigateToFeature(BuildContext context, _ToolAction action) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => _FeatureDetailScreen(action: action),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final mediaQuery = MediaQuery.of(context);
     final width = mediaQuery.size.width;
     final webStyle = kIsWeb || width >= 900;
-    final appTextScaler = _isMobilePlatform
-        ? const TextScaler.linear(0.92)
-        : mediaQuery.textScaler;
+    final appTextScaler =
+        _isMobilePlatform
+            ? const TextScaler.linear(0.92)
+            : mediaQuery.textScaler;
     final actions = <_ToolAction>[
       _ToolAction(
         icon: Icons.picture_as_pdf_rounded,
@@ -824,33 +925,32 @@ class _HomeScreenState extends State<HomeScreen> {
         color: const Color(0xFFB71C1C),
         onTap: () => _runTask('Images to PDF', _imageToPdf),
       ),
-      if (_isMobilePlatform)
-        _ToolAction(
-          icon: Icons.camera_alt_outlined,
-          title: 'Camera to PDF',
-          subtitle: 'Capture multiple photos into one PDF',
-          color: const Color(0xFF2E7D32),
-          onTap: () => _runTask('Camera to PDF', _cameraToPdf),
-        ),
+      _ToolAction(
+        icon: Icons.camera_alt_outlined,
+        title: 'Camera to PDF',
+        subtitle: 'Capture multiple photos into one PDF',
+        color: const Color(0xFF0B7A75),
+        onTap: () => _runTask('Camera to PDF', _cameraToPdf),
+      ),
       _ToolAction(
         icon: Icons.image_outlined,
         title: 'PDF to Images',
         subtitle: 'Export each page as JPG',
-        color: const Color(0xFFAD1457),
+        color: const Color(0xFFB71C1C),
         onTap: () => _runTask('PDF to Images', _pdfToImages),
       ),
       _ToolAction(
         icon: Icons.text_snippet_outlined,
-        title: 'PDF to Text',
-        subtitle: 'Extract and view text with copy option',
-        color: const Color(0xFF6A1B9A),
-        onTap: () => _runTask('PDF to Text', _pdfToText),
+        title: 'Text Extraction',
+        subtitle: 'Extract text from images or PDF files using offline OCR',
+        color: const Color(0xFF0B7A75),
+        onTap: () => _runTask('Text Extraction', _textExtraction),
       ),
       _ToolAction(
         icon: Icons.crop,
         title: 'Crop Photo',
         subtitle: 'Drag the crop corners manually',
-        color: const Color(0xFFC62828),
+        color: const Color(0xFFB71C1C),
         onTap: () => _runTask('Crop Photo', _cropPhoto),
       ),
     ];
@@ -866,7 +966,7 @@ class _HomeScreenState extends State<HomeScreen> {
               gradient: LinearGradient(
                 begin: Alignment.centerLeft,
                 end: Alignment.centerRight,
-                colors: <Color>[Colors.white, Color(0xFFB71C1C)],
+                colors: <Color>[Color(0xFF0B7A75), Color(0xFFB71C1C)],
               ),
             ),
           ),
@@ -886,7 +986,7 @@ class _HomeScreenState extends State<HomeScreen> {
               const Text(
                 'Local PDF Studio',
                 style: TextStyle(
-                  color: Color(0xFF7F0000),
+                  color: Colors.white,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -897,9 +997,7 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Stack(
             children: <Widget>[
               Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                ),
+                decoration: const BoxDecoration(color: Colors.white),
                 child: Center(
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 1480),
@@ -919,7 +1017,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               gradient: const LinearGradient(
                                 colors: <Color>[
                                   Color(0xFFB71C1C),
-                                  Color(0xFFE53935),
+                                  Color(0xFF0B7A75),
                                 ],
                               ),
                             ),
@@ -941,7 +1039,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                 const SizedBox(height: 8),
                                 Text(
                                   'Works offline on web and mobile. Pick a tool and save instantly.',
-                                  style: Theme.of(context).textTheme.bodyMedium
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .bodyMedium
                                       ?.copyWith(
                                         color: Colors.white.withValues(
                                           alpha: 0.95,
@@ -971,12 +1071,12 @@ class _HomeScreenState extends State<HomeScreen> {
                               builder: (context, constraints) {
                                 final isMobileWidth =
                                     constraints.maxWidth < 760;
-                                final gridColumns = isMobileWidth
-                                    ? 1
-                                    : (constraints.maxWidth >= 980 ? 3 : 2);
-                                final cardHeight = isMobileWidth
-                                    ? 118.0
-                                    : 112.0;
+                                final gridColumns =
+                                    isMobileWidth
+                                        ? 1
+                                        : (constraints.maxWidth >= 980 ? 3 : 2);
+                                final cardHeight =
+                                    isMobileWidth ? 118.0 : 112.0;
                                 return GridView.builder(
                                   gridDelegate:
                                       SliverGridDelegateWithFixedCrossAxisCount(
@@ -993,7 +1093,13 @@ class _HomeScreenState extends State<HomeScreen> {
                                       title: action.title,
                                       subtitle: action.subtitle,
                                       color: action.color,
-                                      onTap: _isWorking ? null : action.onTap,
+                                      onTap:
+                                          _isWorking
+                                              ? null
+                                              : () => _navigateToFeature(
+                                                context,
+                                                action,
+                                              ),
                                     );
                                   },
                                 );
@@ -1066,16 +1172,18 @@ class _ToolAction {
 
 enum _ImagePdfPageMode { a4, matchImage }
 
+enum _TextSource { camera, pdf }
+
 class _ProcessedPdfImage {
   const _ProcessedPdfImage({
     required this.width,
     required this.height,
-    required this.pngBytes,
+    required this.jpegBytes,
   });
 
   final int width;
   final int height;
-  final Uint8List pngBytes;
+  final Uint8List jpegBytes;
 }
 
 _ProcessedPdfImage? _prepareImageForPdf(Uint8List sourceBytes) {
@@ -1087,7 +1195,7 @@ _ProcessedPdfImage? _prepareImageForPdf(Uint8List sourceBytes) {
   return _ProcessedPdfImage(
     width: decoded.width,
     height: decoded.height,
-    pngBytes: Uint8List.fromList(img.encodePng(decoded)),
+    jpegBytes: Uint8List.fromList(img.encodeJpg(decoded, quality: 85)),
   );
 }
 
@@ -1110,6 +1218,110 @@ class _ImagePdfSetupResult {
   final List<_PickedImage> images;
 }
 
+class _FeatureDetailScreen extends StatelessWidget {
+  const _FeatureDetailScreen({required this.action});
+
+  final _ToolAction action;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8FAF9),
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.black),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        title: Text(
+          action.title,
+          style: const TextStyle(
+            color: Colors.black,
+            fontWeight: FontWeight.w400,
+            fontSize: 28,
+          ),
+        ),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 500),
+            child: Card(
+              elevation: 2,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              color: Colors.white,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 32,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      action.title,
+                      style: const TextStyle(
+                        fontSize: 32,
+                        fontWeight: FontWeight.w400,
+                        color: Colors.black,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      action.subtitle,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        height: 1.4,
+                        color: Colors.black87,
+                      ),
+                    ),
+                    const SizedBox(height: 32),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton(
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                          action.onTap();
+                        },
+                        style: FilledButton.styleFrom(
+                          backgroundColor: const Color(0xFF0B7A75),
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(30),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: <Widget>[
+                            const Icon(Icons.play_arrow, size: 20),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Start ${action.title}',
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _ToolCard extends StatelessWidget {
   const _ToolCard({
     required this.icon,
@@ -1127,7 +1339,7 @@ class _ToolCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const buttonColor = Color.fromARGB(255, 255, 242, 247);
+    final buttonColor = color.withValues(alpha: 0.05);
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -1139,7 +1351,7 @@ class _ToolCard extends StatelessWidget {
             color: buttonColor,
             boxShadow: <BoxShadow>[
               BoxShadow(
-                color: const Color.fromARGB(28, 255, 227, 231),
+                color: color.withValues(alpha: 0.08),
                 blurRadius: 18,
                 offset: const Offset(0, 6),
               ),
@@ -1206,14 +1418,15 @@ class _ManualCropScreenState extends State<_ManualCropScreen> {
         title: const Text('Crop Photo'),
         actions: <Widget>[
           TextButton.icon(
-            onPressed: _cropping
-                ? null
-                : () {
-                    setState(() => _cropping = true);
-                    _controller.crop();
-                  },
+            onPressed:
+                _cropping
+                    ? null
+                    : () {
+                      setState(() => _cropping = true);
+                      _controller.crop();
+                    },
             icon: const Icon(Icons.check),
-            label: const Text('Use Crop'),
+            label: const Text('Crop'),
           ),
         ],
       ),
@@ -1238,9 +1451,9 @@ class _ManualCropScreenState extends State<_ManualCropScreen> {
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(12),
-            color: const Color(0xFFFCE4EC),
+            color: const Color(0xFF0B7A75).withValues(alpha: 0.1),
             child: const Text(
-              'Tip: Drag any corner of the crop box, then tap "Use Crop".',
+              'Tip: Drag any corner of the crop box, then tap "Crop".',
               textAlign: TextAlign.center,
             ),
           ),
