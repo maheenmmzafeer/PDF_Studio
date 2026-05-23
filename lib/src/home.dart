@@ -8,14 +8,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:pdf/pdf.dart' as pdf;
-import 'package:pdf/widgets.dart' as pw;
 import 'models.dart';
 import 'theme/app_colors.dart';
 import 'widgets/app_top_bar.dart';
 import 'widgets/tool_card.dart';
 import 'widgets/image_pdf_review_screen.dart';
 import 'widgets/camera_capture_screen.dart';
+import 'features/pdf_builder.dart' as pdf_builder_feature;
 import 'features/images_to_pdf.dart' as images_feature;
 import 'features/camera_to_pdf.dart' as camera_feature;
 import 'features/pdf_to_images.dart' as pdf_images_feature;
@@ -191,46 +190,7 @@ class _HomeScreenState extends State<HomeScreen> implements AppHost {
     List<PickedImage> images,
     ImagePdfPageMode pageMode,
   ) async {
-    final doc = pw.Document();
-    var addedPages = 0;
-
-    for (final pickedImage in images) {
-      final processed = await compute(prepareImageForPdf, pickedImage.bytes);
-      if (processed == null) {
-        continue;
-      }
-
-      final image = pw.MemoryImage(processed.pngBytes);
-      final pageFormat = pageMode == ImagePdfPageMode.matchImage
-          ? pdf.PdfPageFormat(
-              processed.width.toDouble(),
-              processed.height.toDouble(),
-              marginAll: 0,
-            )
-          : pdf.PdfPageFormat.a4;
-
-      doc.addPage(
-        pw.Page(
-          pageFormat: pageFormat,
-          margin: pw.EdgeInsets.zero,
-          build: (_) => pw.SizedBox.expand(
-            child: pw.FittedBox(
-              fit: pw.BoxFit.cover,
-              child: pw.Image(image),
-            ),
-          ),
-        ),
-      );
-      addedPages += 1;
-
-      // Yield occasionally so the progress overlay keeps animating.
-      await Future<void>.delayed(Duration.zero);
-    }
-
-    if (addedPages == 0) {
-      return null;
-    }
-    return doc.save();
+    return pdf_builder_feature.buildPdfBytesFromImages(images, pageMode);
   }
 
   Uint8List _convertPngToJpg(Uint8List pngBytes) => convertPngToJpg(pngBytes);
