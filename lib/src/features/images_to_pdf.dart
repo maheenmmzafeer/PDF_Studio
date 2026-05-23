@@ -24,6 +24,14 @@ Future<void> imageToPdf(AppHost host) async {
     return;
   }
 
-  final saved = await host.saveBytes('images_to_pdf_${host.timestamp()}.pdf', pdfBytes);
-  host.showMessage(saved);
+  final savedPath = await host.savePdfBytes(
+    'images_to_pdf_${host.timestamp()}.pdf',
+    pdfBytes,
+  );
+  if (savedPath == null) {
+    host.showMessage('Save cancelled');
+    return;
+  }
+
+  host.showMessage('Saved PDF: $savedPath');
 }

@@ -73,6 +73,7 @@ abstract class AppHost {
   String timestamp();
 
   Future<String> saveBytes(String name, Uint8List bytes);
+  Future<String?> savePdfBytes(String suggestedName, Uint8List bytes);
   Future<Uint8List?> readPickedFileBytes(PlatformFile pickedFile);
   Future<Uint8List?> buildPdfBytesFromImages(List<PickedImage> images, ImagePdfPageMode pageMode);
   Uint8List convertPngToJpg(Uint8List pngBytes);

@@ -176,6 +176,33 @@ class _HomeScreenState extends State<HomeScreen> implements AppHost {
     return 'Saved file: $name';
   }
 
+  Future<String?> _savePdfBytes(String suggestedName, Uint8List bytes) async {
+    final saveOnDesktop = !kIsWeb &&
+        (Platform.isWindows || Platform.isLinux || Platform.isMacOS);
+
+    final savedPath = await FilePicker.platform.saveFile(
+      dialogTitle: 'Save PDF',
+      fileName: suggestedName,
+      type: FileType.custom,
+      allowedExtensions: <String>['pdf'],
+      bytes: saveOnDesktop ? null : bytes,
+    );
+
+    if (savedPath == null) {
+      return null;
+    }
+
+    if (saveOnDesktop) {
+      try {
+        await File(savedPath).writeAsBytes(bytes, flush: true);
+      } catch (_) {
+        return null;
+      }
+    }
+
+    return savedPath;
+  }
+
   Future<Uint8List?> _readPickedFileBytes(PlatformFile pickedFile) async {
     if (pickedFile.bytes != null) {
       return pickedFile.bytes;
@@ -359,6 +386,10 @@ class _HomeScreenState extends State<HomeScreen> implements AppHost {
 
   @override
   Uint8List convertPngToJpg(Uint8List pngBytes) => _convertPngToJpg(pngBytes);
+
+  @override
+  Future<String?> savePdfBytes(String suggestedName, Uint8List bytes) =>
+      _savePdfBytes(suggestedName, bytes);
 
   @override
   Future<List<PickedImage>> pickImageFiles() => _pickImageFiles();

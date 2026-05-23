@@ -35,6 +35,14 @@ Future<void> cameraToPdf(AppHost host) async {
     return;
   }
 
-  final saved = await host.saveBytes('camera_to_pdf_${host.timestamp()}.pdf', pdfBytes);
-  host.showMessage(saved);
+  final savedPath = await host.savePdfBytes(
+    'camera_to_pdf_${host.timestamp()}.pdf',
+    pdfBytes,
+  );
+  if (savedPath == null) {
+    host.showMessage('Save cancelled');
+    return;
+  }
+
+  host.showMessage('Saved PDF: $savedPath');
 }
