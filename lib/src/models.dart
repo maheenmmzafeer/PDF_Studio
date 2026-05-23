@@ -1,7 +1,6 @@
 import 'dart:typed_data';
 import 'package:image/image.dart' as img;
 import 'package:file_picker/file_picker.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:flutter/widgets.dart';
 
 enum ImagePdfPageMode { a4, matchImage }
@@ -66,7 +65,6 @@ class ImagePdfSetupResult {
 /// to call back into app helpers without circular imports.
 abstract class AppHost {
   bool get isMobilePlatform;
-  ImagePicker get imagePicker;
   BuildContext get context;
   bool get mounted;
 
@@ -78,7 +76,6 @@ abstract class AppHost {
   Future<Uint8List?> buildPdfBytesFromImages(List<PickedImage> images, ImagePdfPageMode pageMode);
   Uint8List convertPngToJpg(Uint8List pngBytes);
   Future<List<PickedImage>> pickImageFiles();
-  Future<List<PickedImage>> captureCameraImages();
   Future<ImagePdfSetupResult?> showImagePdfSetupDialog(List<PickedImage> initialImages, {bool allowAddImages});
   void showMessage(String message);
   Future<void> showExtractedTextDialog(String text);

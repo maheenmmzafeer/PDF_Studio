@@ -31,7 +31,6 @@ dependencies:
   flutter:
     sdk: flutter
 
-  cupertino_icons: ^1.0.8
   file_picker: ^8.3.2
   pdf: ^3.11.3
   printing: ^5.14.2
@@ -39,8 +38,6 @@ dependencies:
   crop_your_image: ^1.1.0
   file_saver: ^0.3.1
   syncfusion_flutter_pdf: ^30.2.7
-  universal_html: ^2.2.4
-  image_picker: ^1.1.2
   path_provider: ^2.1.5
   google_fonts: ^6.2.1
   camera: ^0.11.1

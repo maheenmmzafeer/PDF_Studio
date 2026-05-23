@@ -6,7 +6,6 @@ import 'package:file_saver/file_saver.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'models.dart';
 import 'theme/app_colors.dart';
@@ -31,7 +30,6 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> implements AppHost {
   bool _isWorking = false;
   String _status = 'Ready';
-  final ImagePicker _imagePicker = ImagePicker();
   static const MethodChannel _mediaScanChannel = MethodChannel(
     'pdf_studio/media_scan',
   );
@@ -263,8 +261,6 @@ class _HomeScreenState extends State<HomeScreen> implements AppHost {
     return items;
   }
 
-  
-
   Future<List<PickedImage>> _captureCameraImages() async {
     if (!_isMobilePlatform) {
       return <PickedImage>[];
@@ -370,9 +366,6 @@ class _HomeScreenState extends State<HomeScreen> implements AppHost {
   bool get isMobilePlatform => _isMobilePlatform;
 
   @override
-  ImagePicker get imagePicker => _imagePicker;
-
-  @override
   String timestamp() => _timestamp();
 
   @override
@@ -393,9 +386,6 @@ class _HomeScreenState extends State<HomeScreen> implements AppHost {
 
   @override
   Future<List<PickedImage>> pickImageFiles() => _pickImageFiles();
-
-  @override
-  Future<List<PickedImage>> captureCameraImages() => _captureCameraImages();
 
   @override
   Future<ImagePdfSetupResult?> showImagePdfSetupDialog(List<PickedImage> initialImages, {bool allowAddImages = true}) => _showImagePdfSetupDialog(initialImages, allowAddImages: allowAddImages);
