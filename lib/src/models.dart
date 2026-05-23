@@ -6,16 +6,18 @@ import 'package:flutter/widgets.dart';
 
 enum ImagePdfPageMode { a4, matchImage }
 
+const int _pdfImageJpegQuality = 86;
+
 class ProcessedPdfImage {
   const ProcessedPdfImage({
     required this.width,
     required this.height,
-    required this.pngBytes,
+    required this.bytes,
   });
 
   final int width;
   final int height;
-  final Uint8List pngBytes;
+  final Uint8List bytes;
 }
 
 ProcessedPdfImage? prepareImageForPdf(Uint8List sourceBytes) {
@@ -24,10 +26,16 @@ ProcessedPdfImage? prepareImageForPdf(Uint8List sourceBytes) {
     return null;
   }
 
+  final canvas = img.Image(width: decoded.width, height: decoded.height);
+  img.fill(canvas, color: img.ColorRgb8(255, 255, 255));
+  img.compositeImage(canvas, decoded);
+
   return ProcessedPdfImage(
-    width: decoded.width,
-    height: decoded.height,
-    pngBytes: Uint8List.fromList(img.encodePng(decoded)),
+    width: canvas.width,
+    height: canvas.height,
+    bytes: Uint8List.fromList(
+      img.encodeJpg(canvas, quality: _pdfImageJpegQuality),
+    ),
   );
 }
 

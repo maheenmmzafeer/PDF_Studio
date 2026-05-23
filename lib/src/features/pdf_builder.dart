@@ -17,7 +17,7 @@ Future<Uint8List?> buildPdfBytesFromImages(
       continue;
     }
 
-    final image = pw.MemoryImage(processed.pngBytes);
+    final image = pw.MemoryImage(processed.bytes);
     final pageFormat = pageMode == ImagePdfPageMode.matchImage
         ? pdf.PdfPageFormat(
             processed.width.toDouble(),
