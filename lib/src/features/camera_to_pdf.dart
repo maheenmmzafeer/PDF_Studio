@@ -1,4 +1,7 @@
+import 'package:flutter/material.dart';
+
 import '../models.dart';
+import '../widgets/camera_capture_screen.dart';
 
 Future<void> cameraToPdf(AppHost host) async {
   if (!host.isMobilePlatform) {
@@ -6,8 +9,17 @@ Future<void> cameraToPdf(AppHost host) async {
     return;
   }
 
+  final capturedImages = await Navigator.of(host.context).push<List<PickedImage>>(
+    MaterialPageRoute(
+      builder: (_) => const CameraCaptureScreen(),
+    ),
+  );
+  if (capturedImages == null || capturedImages.isEmpty) {
+    return;
+  }
+
   final setup = await host.showImagePdfSetupDialog(
-    <PickedImage>[],
+    capturedImages,
     allowAddImages: true,
   );
   if (setup == null || setup.images.isEmpty) {

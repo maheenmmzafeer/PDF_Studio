@@ -13,9 +13,9 @@ class AppTypography {
   static const double bodySmall = 12.0;
   static const double label = 12.0;
 
-  /// Build a TextTheme with explicit sizes using YoungSerif.
+  /// Build a TextTheme with explicit sizes using Roboto.
   static TextTheme textTheme() {
-    final base = GoogleFonts.youngSerifTextTheme();
+    final base = GoogleFonts.robotoTextTheme();
     return TextTheme(
       headlineSmall: (base.headlineSmall ?? const TextStyle()).copyWith(
         fontSize: headlineSmall,

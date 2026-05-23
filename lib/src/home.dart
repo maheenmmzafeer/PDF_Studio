@@ -12,8 +12,10 @@ import 'package:pdf/pdf.dart' as pdf;
 import 'package:pdf/widgets.dart' as pw;
 import 'models.dart';
 import 'theme/app_colors.dart';
+import 'widgets/app_top_bar.dart';
 import 'widgets/tool_card.dart';
 import 'widgets/image_pdf_review_screen.dart';
+import 'widgets/camera_capture_screen.dart';
 import 'features/images_to_pdf.dart' as images_feature;
 import 'features/camera_to_pdf.dart' as camera_feature;
 import 'features/pdf_to_images.dart' as pdf_images_feature;
@@ -210,11 +212,12 @@ class _HomeScreenState extends State<HomeScreen> implements AppHost {
       doc.addPage(
         pw.Page(
           pageFormat: pageFormat,
-          margin: pageMode == ImagePdfPageMode.matchImage
-              ? pw.EdgeInsets.zero
-              : const pw.EdgeInsets.all(20),
-          build: (_) => pw.Center(
-            child: pw.FittedBox(fit: pw.BoxFit.contain, child: pw.Image(image)),
+          margin: pw.EdgeInsets.zero,
+          build: (_) => pw.SizedBox.expand(
+            child: pw.FittedBox(
+              fit: pw.BoxFit.cover,
+              child: pw.Image(image),
+            ),
           ),
         ),
       );
@@ -280,19 +283,12 @@ class _HomeScreenState extends State<HomeScreen> implements AppHost {
       return <PickedImage>[];
     }
 
-    final shot = await _imagePicker.pickImage(source: ImageSource.camera);
-    if (shot == null) {
-      return <PickedImage>[];
-    }
-
-    final bytes = await shot.readAsBytes();
-    return <PickedImage>[
-      PickedImage(
-        id: '${DateTime.now().microsecondsSinceEpoch}_camera',
-        name: 'camera_${_timestamp()}.jpg',
-        bytes: bytes,
+    final result = await Navigator.of(context).push<List<PickedImage>>(
+      MaterialPageRoute(
+        builder: (_) => const CameraCaptureScreen(),
       ),
-    ];
+    );
+    return result ?? <PickedImage>[];
   }
 
   Future<ImagePdfSetupResult?> _showImagePdfSetupDialog(
@@ -470,40 +466,10 @@ class _HomeScreenState extends State<HomeScreen> implements AppHost {
     return MediaQuery(
       data: mediaQuery.copyWith(textScaler: appTextScaler),
       child: Scaffold(
-        appBar: AppBar(
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-            flexibleSpace: Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.centerLeft,
-                end: Alignment.centerRight,
-                colors: <Color>[AppColors.white, AppColors.primaryRed],
-              ),
-            ),
-          ),
-          title: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              ClipRRect(
-                borderRadius: BorderRadius.circular(6),
-                child: Image.asset(
-                  'PDF_icon.jpg',
-                  width: 30,
-                  height: 30,
-                  fit: BoxFit.cover,
-                ),
-              ),
-              const SizedBox(width: 10),
-              const Text(
-                'Local PDF Studio',
-                  style: TextStyle(
-                  color: AppColors.titleRed,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
+        appBar: const AppTopBar(
+          title: 'Local PDF Studio',
+          subtitle: 'Offline PDF + image tools',
+          showLogo: true,
         ),
         body: SafeArea(
           child: Stack(

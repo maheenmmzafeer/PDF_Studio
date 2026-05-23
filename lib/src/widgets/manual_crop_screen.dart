@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'package:crop_your_image/crop_your_image.dart';
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
+import 'app_top_bar.dart';
 
 class ManualCropScreen extends StatefulWidget {
   const ManualCropScreen({required this.imageBytes, required this.title, super.key});
@@ -20,8 +21,10 @@ class _ManualCropScreenState extends State<ManualCropScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Crop Photo'),
+      appBar: AppTopBar(
+        title: 'Crop Photo',
+        subtitle: 'Adjust the crop box before saving',
+        showBackButton: true,
         actions: <Widget>[
           TextButton.icon(
             onPressed: _cropping

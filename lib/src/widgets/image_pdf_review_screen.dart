@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../models.dart';
 import '../theme/app_colors.dart';
+import 'app_top_bar.dart';
 import 'manual_crop_screen.dart';
 
 class ImagePdfReviewScreen extends StatefulWidget {
@@ -87,14 +88,10 @@ class _ImagePdfReviewScreenState extends State<ImagePdfReviewScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Prepare PDF'),
-        actions: <Widget>[
-          TextButton(
-            onPressed: _images.isEmpty ? null : _finish,
-            child: const Text('Create PDF'),
-          ),
-        ],
+      appBar: const AppTopBar(
+        title: 'Prepare PDF',
+        subtitle: 'Review, crop, and reorder your photos',
+        showBackButton: true,
       ),
       body: SafeArea(
         child: Padding(
@@ -102,69 +99,81 @@ class _ImagePdfReviewScreenState extends State<ImagePdfReviewScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              Text('Page size', style: theme.textTheme.titleSmall),
+              Text(
+                'Page size',
+                style: theme.textTheme.titleSmall?.copyWith(fontSize: 14),
+              ),
               const SizedBox(height: 8),
-              SegmentedButton<ImagePdfPageMode>(
-                segments: const <ButtonSegment<ImagePdfPageMode>>[
-                  ButtonSegment<ImagePdfPageMode>(
-                    value: ImagePdfPageMode.a4,
-                    label: Text('A4'),
-                    icon: Icon(Icons.picture_as_pdf_outlined),
-                  ),
-                  ButtonSegment<ImagePdfPageMode>(
-                    value: ImagePdfPageMode.matchImage,
-                    label: Text('Match image size'),
-                    icon: Icon(Icons.photo_size_select_actual_outlined),
-                  ),
-                ],
-                selected: <ImagePdfPageMode>{_pageMode},
-                onSelectionChanged: (value) {
-                  setState(() => _pageMode = value.first);
-                },
+              SizedBox(
+                width: double.infinity,
+                child: SegmentedButton<ImagePdfPageMode>(
+                  segments: const <ButtonSegment<ImagePdfPageMode>>[
+                    ButtonSegment<ImagePdfPageMode>(
+                      value: ImagePdfPageMode.a4,
+                      label: Text('A4'),
+                      icon: Icon(Icons.picture_as_pdf_outlined),
+                    ),
+                    ButtonSegment<ImagePdfPageMode>(
+                      value: ImagePdfPageMode.matchImage,
+                      label: Text('Image size'),
+                      icon: Icon(Icons.photo_size_select_actual_outlined),
+                    ),
+                  ],
+                  selected: <ImagePdfPageMode>{_pageMode},
+                  onSelectionChanged: (value) {
+                    setState(() => _pageMode = value.first);
+                  },
+                ),
               ),
               const SizedBox(height: 12),
               if (widget.allowAddImages)
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
+                Row(
                   children: <Widget>[
-                    FilledButton.tonalIcon(
-                      onPressed: () => _appendImages(widget.onAddFromGallery()),
-                      icon: const Icon(Icons.photo_library_outlined),
-                      label: const Text('From gallery'),
+                    Expanded(
+                      child: FilledButton.tonalIcon(
+                        onPressed: () => _appendImages(widget.onAddFromGallery()),
+                        icon: const Icon(Icons.photo_library_outlined),
+                        label: const Text('From gallery'),
+                      ),
                     ),
-                    FilledButton.tonalIcon(
-                      onPressed: _addFromCamera,
-                      icon: const Icon(Icons.camera_alt_outlined),
-                      label: const Text('Take photo'),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: FilledButton.tonalIcon(
+                        onPressed: _addFromCamera,
+                        icon: const Icon(Icons.camera_alt_outlined),
+                        label: const Text('Take photo'),
+                      ),
                     ),
                   ],
                 ),
               const SizedBox(height: 8),
-              Text('${_images.length} selected'),
+              Text(
+                '${_images.length} selected',
+                style: theme.textTheme.bodySmall?.copyWith(fontSize: 12),
+              ),
               const SizedBox(height: 8),
               Text(
                 'Drag thumbnails to sort page order',
-                style: theme.textTheme.bodySmall,
+                style: theme.textTheme.bodySmall?.copyWith(fontSize: 12),
               ),
               const SizedBox(height: 12),
+              const Text(
+                'Selected photos',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+              ),
+              const SizedBox(height: 8),
               Expanded(
                 child: _images.isEmpty
                     ? const Center(child: Text('No images selected'))
-                    : ReorderableListView.builder(
-                        scrollDirection: Axis.horizontal,
-                        buildDefaultDragHandles: false,
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                    : GridView.builder(
+                        padding: const EdgeInsets.only(right: 4),
+                        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                          maxCrossAxisExtent: 116,
+                          mainAxisExtent: 116,
+                          crossAxisSpacing: 8,
+                          mainAxisSpacing: 8,
+                        ),
                         itemCount: _images.length,
-                        onReorder: (oldIndex, newIndex) {
-                          setState(() {
-                            if (newIndex > oldIndex) {
-                              newIndex -= 1;
-                            }
-                            final item = _images.removeAt(oldIndex);
-                            _images.insert(newIndex, item);
-                          });
-                        },
                         itemBuilder: (context, index) {
                           final item = _images[index];
                           final tile = MouseRegion(
@@ -241,20 +250,12 @@ class _ImagePdfReviewScreenState extends State<ImagePdfReviewScreen> {
                             ),
                           );
 
-                          return SizedBox(
+                          return SizedBox.square(
                             key: ValueKey(item.id),
-                            width: 136,
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 6),
-                              child: Center(
-                                child: SizedBox.square(
-                                  dimension: 136,
-                                  child: kIsWeb
-                                      ? ReorderableDragStartListener(index: index, child: tile)
-                                      : ReorderableDelayedDragStartListener(index: index, child: tile),
-                                ),
-                              ),
-                            ),
+                            dimension: 116,
+                            child: kIsWeb
+                                ? ReorderableDragStartListener(index: index, child: tile)
+                                : ReorderableDelayedDragStartListener(index: index, child: tile),
                           );
                         },
                       ),
