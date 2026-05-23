@@ -175,8 +175,23 @@ class _HomeScreenState extends State<HomeScreen> implements AppHost {
   }
 
   Future<String?> _savePdfBytes(String suggestedName, Uint8List bytes) async {
-    final saveOnDesktop = !kIsWeb &&
-        (Platform.isWindows || Platform.isLinux || Platform.isMacOS);
+    // On web, `FilePicker.saveFile` is not implemented. Use FileSaver
+    // to trigger a browser download instead. On desktop, keep the
+    // existing FilePicker flow so the user can choose a path.
+    if (kIsWeb) {
+      final dot = suggestedName.lastIndexOf('.');
+      final base = dot > 0 ? suggestedName.substring(0, dot) : suggestedName;
+      final ext = dot > 0 ? suggestedName.substring(dot + 1) : 'pdf';
+      await FileSaver.instance.saveFile(
+        name: base,
+        bytes: bytes,
+        fileExtension: ext,
+        mimeType: MimeType.pdf,
+      );
+      return suggestedName;
+    }
+
+    final saveOnDesktop = (Platform.isWindows || Platform.isLinux || Platform.isMacOS);
 
     final savedPath = await FilePicker.platform.saveFile(
       dialogTitle: 'Save PDF',
