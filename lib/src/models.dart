@@ -5,7 +5,7 @@ import 'package:flutter/widgets.dart';
 
 enum ImagePdfPageMode { a4, matchImage }
 
-const int _pdfImageJpegQuality = 86;
+const int _pdfImageJpegQuality = 90;
 
 class ProcessedPdfImage {
   const ProcessedPdfImage({
