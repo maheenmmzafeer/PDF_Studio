@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../models.dart';
 import '../theme/app_colors.dart';
+import 'app_top_bar.dart';
 import 'manual_crop_screen.dart';
 
 class CameraCaptureScreen extends StatefulWidget {
@@ -206,9 +207,10 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
               );
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Camera'),
-        automaticallyImplyLeading: true,
+      appBar: const AppTopBar(
+        title: 'Camera',
+        subtitle: 'Capture multiple photos, then tap Done',
+        showBackButton: true,
       ),
       body: SafeArea(
         child: Column(

@@ -30,14 +30,15 @@ class AppTopBar extends StatelessWidget implements PreferredSizeWidget {
           )
         : showLogo
             ? Padding(
-                padding: const EdgeInsets.only(left: 12, right: 14),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Image.asset(
-                    'PDF_icon.jpg',
-                    width: 12,
-                    height: 12,
-                    fit: BoxFit.cover,
+                padding: const EdgeInsets.only(left: 12),
+                child: Center(
+                  child: SizedBox(
+                    width: 32,
+                    height: 32,
+                    child: Image.asset(
+                      'PDF_icon.jpg',
+                      fit: BoxFit.contain,
+                    ),
                   ),
                 ),
               )
@@ -46,20 +47,13 @@ class AppTopBar extends StatelessWidget implements PreferredSizeWidget {
     return AppBar(
       automaticallyImplyLeading: false,
       elevation: 0,
-      backgroundColor: Colors.transparent,
+      backgroundColor: Colors.white,
+      surfaceTintColor: Colors.white,
       toolbarHeight: 72,
-      leadingWidth: showBackButton ? 56 : (showLogo ? 66 : null),
+      leadingWidth: showBackButton ? 56 : (showLogo ? 64 : null),
       leading: leading,
       titleSpacing: showLogo ? 4 : null,
-      flexibleSpace: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.centerLeft,
-            end: Alignment.centerRight,
-            colors: <Color>[Colors.white, AppColors.primaryRed],
-          ),
-        ),
-      ),
+      foregroundColor: AppColors.primaryRed,
       title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
@@ -69,7 +63,7 @@ class AppTopBar extends StatelessWidget implements PreferredSizeWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(
-              color: AppColors.titleRed,
+              color: AppColors.primaryRed,
               fontWeight: FontWeight.w700,
             ),
           ),
