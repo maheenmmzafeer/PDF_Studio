@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 /// Centralized typography and concrete font sizes for the app.
 class AppTypography {
@@ -15,28 +14,19 @@ class AppTypography {
 
   /// Build a TextTheme with explicit sizes using Roboto.
   static TextTheme textTheme() {
-    final base = GoogleFonts.robotoTextTheme();
     return TextTheme(
-      headlineSmall: (base.headlineSmall ?? const TextStyle()).copyWith(
+      headlineSmall: const TextStyle(
         fontSize: headlineSmall,
         fontWeight: FontWeight.w700,
       ),
-      titleSmall: (base.titleSmall ?? const TextStyle()).copyWith(
+      titleSmall: const TextStyle(
         fontSize: titleSmall,
         fontWeight: FontWeight.w600,
       ),
-      bodyLarge: (base.bodyLarge ?? const TextStyle()).copyWith(
-        fontSize: bodyLarge,
-      ),
-      bodyMedium: (base.bodyMedium ?? const TextStyle()).copyWith(
-        fontSize: bodyMedium,
-      ),
-      bodySmall: (base.bodySmall ?? const TextStyle()).copyWith(
-        fontSize: bodySmall,
-      ),
-      labelSmall: (base.labelSmall ?? const TextStyle()).copyWith(
-        fontSize: label,
-      ),
+      bodyLarge: const TextStyle(fontSize: bodyLarge),
+      bodyMedium: const TextStyle(fontSize: bodyMedium),
+      bodySmall: const TextStyle(fontSize: bodySmall),
+      labelSmall: const TextStyle(fontSize: label),
     );
   }
 }

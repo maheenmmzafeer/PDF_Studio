@@ -43,7 +43,7 @@ Uint8List convertPngToJpg(Uint8List pngBytes) {
   if (decoded == null) {
     return pngBytes;
   }
-  return Uint8List.fromList(img.encodeJpg(decoded, quality: 94));
+  return Uint8List.fromList(img.encodeJpg(decoded, quality: 88));
 }
 
 class PickedImage {

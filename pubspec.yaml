@@ -39,7 +39,6 @@ dependencies:
   file_saver: ^0.3.1
   syncfusion_flutter_pdf: ^30.2.7
   path_provider: ^2.1.5
-  google_fonts: ^6.2.1
   camera: ^0.11.1
 
 dev_dependencies:
