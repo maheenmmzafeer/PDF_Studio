@@ -31,12 +31,12 @@ Future<void> cameraToPdf(AppHost host) async {
     setup.pageMode,
   );
   if (pdfBytes == null) {
-    host.showMessage('No valid captured images found to create a PDF.');
+    host.showMessage('Failed to create PDF');
     return;
   }
 
   final savedPath = await host.savePdfBytes(
-    'camera_to_pdf_${host.timestamp()}.pdf',
+    'camera_to_pdf_${host.timestamp()}',
     pdfBytes,
   );
   if (savedPath == null) {
@@ -44,5 +44,5 @@ Future<void> cameraToPdf(AppHost host) async {
     return;
   }
 
-  host.showMessage('Saved PDF: $savedPath');
+  host.showMessage('Saved PDF');
 }

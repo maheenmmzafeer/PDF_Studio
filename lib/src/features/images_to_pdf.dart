@@ -20,12 +20,12 @@ Future<void> imageToPdf(AppHost host) async {
     setup.pageMode,
   );
   if (pdfBytes == null) {
-    host.showMessage('No valid image pages found to create a PDF.');
+    host.showMessage('Failed to create PDF');
     return;
   }
 
   final savedPath = await host.savePdfBytes(
-    'images_to_pdf_${host.timestamp()}.pdf',
+    'images_to_pdf_${host.timestamp()}',
     pdfBytes,
   );
   if (savedPath == null) {
@@ -33,5 +33,5 @@ Future<void> imageToPdf(AppHost host) async {
     return;
   }
 
-  host.showMessage('Saved PDF: $savedPath');
+  host.showMessage('Saved PDF');
 }

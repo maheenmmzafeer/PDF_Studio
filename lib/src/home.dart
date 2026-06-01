@@ -33,6 +33,9 @@ class _HomeScreenState extends State<HomeScreen> implements AppHost {
   static const MethodChannel _mediaScanChannel = MethodChannel(
     'pdf_studio/media_scan',
   );
+  static const MethodChannel _pdfSaveChannel = MethodChannel(
+    'pdf_studio/pdf_save',
+  );
 
   bool get _isMobilePlatform {
     if (kIsWeb) {
@@ -52,8 +55,10 @@ class _HomeScreenState extends State<HomeScreen> implements AppHost {
 
     try {
       await task();
-    } catch (error) {
-      _showMessage('Error: $error');
+    } catch (error, stackTrace) {
+      debugPrint('Task failed for $title: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      _showMessage(_failureMessageForTask(title));
     } finally {
       if (mounted) {
         setState(() {
@@ -68,6 +73,22 @@ class _HomeScreenState extends State<HomeScreen> implements AppHost {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  String _failureMessageForTask(String title) {
+    switch (title) {
+      case 'Images to PDF':
+      case 'Camera to PDF':
+        return 'Failed to create PDF';
+      case 'PDF to Images':
+        return 'Failed to extract images';
+      case 'PDF to Text':
+        return 'Failed to extract text';
+      case 'Crop Photo':
+        return 'Failed to crop image';
+      default:
+        return 'Failed to complete $title';
+    }
   }
 
   String _timestamp() {
@@ -178,42 +199,57 @@ class _HomeScreenState extends State<HomeScreen> implements AppHost {
     // On web, `FilePicker.saveFile` is not implemented. Use FileSaver
     // to trigger a browser download instead. On desktop, keep the
     // existing FilePicker flow so the user can choose a path.
+    final baseName = suggestedName.replaceFirst(RegExp(r'\.pdf$', caseSensitive: false), '').trim().isEmpty
+        ? _timestamp()
+        : suggestedName.replaceFirst(RegExp(r'\.pdf$', caseSensitive: false), '').trim();
+
     if (kIsWeb) {
-      final dot = suggestedName.lastIndexOf('.');
-      final base = dot > 0 ? suggestedName.substring(0, dot) : suggestedName;
-      final ext = dot > 0 ? suggestedName.substring(dot + 1) : 'pdf';
       await FileSaver.instance.saveFile(
-        name: base,
+        name: baseName,
         bytes: bytes,
-        fileExtension: ext,
+        fileExtension: 'pdf',
         mimeType: MimeType.pdf,
       );
-      return suggestedName;
+      return '$baseName.pdf';
     }
 
-    final saveOnDesktop = (Platform.isWindows || Platform.isLinux || Platform.isMacOS);
+    if (Platform.isAndroid) {
+      try {
+        final savedPath = await _pdfSaveChannel.invokeMethod<String>(
+          'savePdf',
+          <String, dynamic>{
+            'fileName': '$baseName.pdf',
+            'bytes': bytes,
+          },
+        );
+        return savedPath;
+      } catch (error) {
+        debugPrint('Android PDF save failed: $error');
+        return null;
+      }
+    }
 
     final savedPath = await FilePicker.platform.saveFile(
       dialogTitle: 'Save PDF',
-      fileName: suggestedName,
+      fileName: baseName,
       type: FileType.custom,
       allowedExtensions: <String>['pdf'],
-      bytes: saveOnDesktop ? null : bytes,
+      bytes: bytes,
     );
 
     if (savedPath == null) {
       return null;
     }
 
-    if (saveOnDesktop) {
-      try {
-        await File(savedPath).writeAsBytes(bytes, flush: true);
-      } catch (_) {
-        return null;
-      }
-    }
+    final outputPath = savedPath.toLowerCase().endsWith('.pdf') ? savedPath : '$savedPath.pdf';
 
-    return savedPath;
+    try {
+      await File(outputPath).writeAsBytes(bytes, flush: true);
+      return outputPath;
+    } catch (error) {
+      debugPrint('Failed to save PDF to $outputPath: $error');
+      return null;
+    }
   }
 
   Future<Uint8List?> _readPickedFileBytes(PlatformFile pickedFile) async {
